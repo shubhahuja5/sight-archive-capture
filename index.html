@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Sight Archive - Digital Capture</title>
+    <!-- Using Tailwind for utility classes for cleaner, modern look -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Custom styles for the digital camera aesthetic */
+        :root {
+            --color-dark: #1f2937; /* Dark Gray (almost black) */
+            --color-light: #f3f4f6; /* Off-White */
+            --color-blue: #1e40af; /* Dark Blue Accent */
+        }
+        body {
+            background-color: var(--color-dark);
+            font-family: 'Roboto Mono', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        /* The main "Digital Camera Body" container */
+        #cameraBody {
+            background-color: var(--color-light);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.2);
+            width: 100%;
+            max-width: 480px; /* Max width for a polaroid/camera feel */
+            border: 4px solid var(--color-dark);
+        }
+
+        /* Screen/Preview Area */
+        #cameraPreview, #canvas, .playback { 
+            width: 100%; 
+            aspect-ratio: 4/3; /* Classic screen ratio */
+            background-color: #000;
+            border: 2px solid var(--color-dark);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.8);
+            object-fit: cover;
+        }
+        
+        /* Progress Bar Styling (Digital LED Look) */
+        #progressBarContainer { 
+            width: 100%; 
+            height: 16px;
+            background-color: var(--color-dark);
+            border-radius: 4px; 
+            margin-bottom: 16px;
+            overflow: hidden;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        #progressBar {
+            height: 100%;
+            background-color: var(--color-blue); /* Dark Blue */
+            transition: width 0.05s linear;
+        }
+
+        /* Button Styling */
+        .btn {
+            font-weight: 700;
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: all 0.1s;
+            text-transform: uppercase;
+        }
+        .btn-warning {
+            background-color: var(--color-dark);
+            color: var(--color-light);
+            border: 2px solid var(--color-dark);
+        }
+        .btn-warning:hover:not(:disabled) {
+            background-color: var(--color-blue);
+            border-color: var(--color-blue);
+        }
+        .btn-danger {
+            background-color: #dc2626; /* Red for recording */
+            color: white;
+            border: 2px solid #dc2626;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background-color: #ef4444;
+        }
+        .btn-primary {
+            background-color: var(--color-blue);
+            color: var(--color-light);
+            border: 2px solid var(--color-blue);
+        }
+        .btn-secondary {
+            background-color: #9ca3af; /* Gray */
+            color: var(--color-dark);
+            border: 2px solid #9ca3af;
+        }
+
+        /* Status Message Area */
+        #status_message {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            text-align: left;
+            width: 100%;
+            background-color: #e5e7eb;
+        }
+        .alert-success { background-color: #d1fae5; color: #065f46; } /* Green */
+        .alert-danger { background-color: #fee2e2; color: #991b1b; } /* Red */
+        .alert-primary { background-color: #bfdbfe; color: var(--color-blue); } /* Blue */
+        .alert-info { background-color: #e0f2f1; color: #0f766e; } /* Teal/Info */
+
+        /* Utility for mobile responsiveness */
+        @media (max-width: 500px) {
+            #cameraBody {
+                padding: 16px;
+            }
+            .btn {
+                padding: 8px 12px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="cameraBody">
+        <header class="mb-4">
+            <h1 class="text-xl font-bold text-gray-800">SIGHT ARCHIVE v1.2</h1>
+            <p class="text-sm text-gray-600 mt-1">Ready for Capture</p>
+        </header>
+
+        <div id="captureSection" class="flex flex-col items-center">
+            
+            <!-- Camera/Video Preview Area -->
+            <video id="cameraPreview" autoplay playsinline muted></video>
+            <canvas id="canvas"></canvas>
+            
+            <!-- Progress Bar for Video Recording -->
+            <div id="progressBarContainer">
+                <div id="progressBar"></div>
+            </div>
+
+            <!-- Capture Options (Photo/Video) -->
+            <div id="captureOptions" class="flex gap-3 mb-3 w-full justify-center">
+                <button id="photoBtn" class="btn btn-warning flex-1">Photo</button>
+                <button id="videoBtn" class="btn btn-danger flex-1">Video (5s)</button>
+            </div>
+
+            <!-- Action Buttons (Retake/Submit) -->
+            <div id="actionButtons" class="flex gap-3 w-full justify-center" style="display: none;">
+                <button id="retakeBtn" class="btn btn-secondary flex-1">Retake</button>
+                <button id="submitBtn" class="btn btn-primary flex-1">Submit</button>
+            </div>
+
+            <!-- Status Message -->
+            <p id="status_message" class="alert-status"></p>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // ======================================================
+            // CLOUDINARY CONFIGURATION 
+            // ======================================================
+            const YOUR_CLOUD_NAME = 'dsaabtnph'; 
+            const YOUR_UPLOAD_PRESET = 'my_short_videos'; 
+            // ======================================================
+            
+            // ===== Element References =====
+            const captureSection = document.getElementById('captureSection');
+            const cameraPreview = document.getElementById('cameraPreview');
+            const canvas = document.getElementById('canvas');
+            const captureOptions = document.getElementById('captureOptions');
+            const photoBtn = document.getElementById('photoBtn');
+            const videoBtn = document.getElementById('videoBtn');
+            const actionButtons = document.getElementById('actionButtons');
+            const retakeBtn = document.getElementById('retakeBtn');
+            const submitBtn = document.getElementById('submitBtn');
+            const progressBarContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const statusMessage = document.getElementById('status_message'); 
+
+            // ===== Data Storage & State =====
+            let currentSubmission = {};
+            let cameraStream;
+            let mediaRecorder;
+            let recordedChunks = [];
+            let videoInterval; 
+
+            // ===== Helper Functions =====
+            
+            function getSupportedMimeType() {
+                // Prefer MP4 for better cross-platform compatibility, fall back to webm
+                if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1')) { return 'video/mp4; codecs=avc1'; } 
+                if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) { return 'video/webm; codecs=vp9'; }
+                if (MediaRecorder.isTypeSupported('video/webm')) { return 'video/webm'; }
+                return '';
+            }
+
+            function stopCamera() {
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => { track.stop(); });
+                    cameraPreview.srcObject = null; 
+                    cameraStream = null; 
+                }
+            }
+
+            async function initCamera() {
+                stopCamera(); 
+                progressBarContainer.style.display = 'none';
+                statusMessage.textContent = 'Ready to capture. Click a button to start.';
+                statusMessage.className = 'alert-status bg-gray-200 text-gray-700';
+
+                try {
+                    // Request camera access
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'user' }, // Prefer front camera if available
+                        audio: false 
+                    });
+                    cameraPreview.srcObject = cameraStream;
+                    await cameraPreview.play();
+
+                    // UI Reset
+                    cameraPreview.style.display = 'block';
+                    canvas.style.display = 'none';
+                    captureOptions.style.display = 'flex';
+                    actionButtons.style.display = 'none';
+                    submitBtn.disabled = false;
+                    retakeBtn.disabled = false;
+                    submitBtn.textContent = 'Submit';
+
+
+                    // Remove any previous video preview element
+                    const prevVideo = captureSection.querySelector('.playback');
+                    if (prevVideo) prevVideo.remove();
+
+                } catch (err) {
+                    statusMessage.innerHTML = '🔴 <span class="text-red-700">CAMERA FAILED: Please allow camera access and refresh the page.</span>';
+                    statusMessage.className = 'alert-status alert-danger';
+                }
+            }
+
+            // ==================================================
+            // FUNCTION: Direct Upload to Cloudinary API
+            // ==================================================
+            async function uploadToCloudinary(blob, type) {
+                if (!YOUR_UPLOAD_PRESET) {
+                    throw new Error("Upload Preset is missing.");
+                }
+                
+                const endpoint = `https://api.cloudinary.com/v1_1/${YOUR_CLOUD_NAME}/auto/upload`;
+                const formData = new FormData();
+                
+                formData.append('file', blob);
+                formData.append('upload_preset', YOUR_UPLOAD_PRESET);
+                formData.append('resource_type', type); 
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Cloudinary API Error: ${errorData.error.message || response.statusText}`); 
+                }
+
+                const data = await response.json();
+                return data.secure_url;
+            }
+            
+            // ===== Initial Camera Start =====
+            initCamera();
+
+
+            // ===== Take Photo Logic =====
+            photoBtn.addEventListener('click', () => {
+                if (!cameraStream) { initCamera(); return; }
+                
+                // UI changes
+                captureOptions.style.display = 'none';
+                actionButtons.style.display = 'flex';
+                statusMessage.textContent = 'Photo captured. Submit or Retake.';
+                statusMessage.className = 'alert-status alert-info';
+
+                // Draw image to canvas
+                const context = canvas.getContext('2d');
+                canvas.width = cameraPreview.videoWidth;
+                canvas.height = cameraPreview.videoHeight;
+                context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+
+                // Show canvas, hide video preview
+                cameraPreview.style.display = 'none';
+                canvas.style.display = 'block';
+
+                currentSubmission.type = 'image'; // Use 'image' for photos
+                currentSubmission.dataURL = canvas.toDataURL('image/png');
+                
+                stopCamera(); 
+            });
+
+            // ===== Record 5 Second Video Logic =====
+            videoBtn.addEventListener('click', () => {
+                if (!cameraStream) { initCamera(); return; }
+                
+                captureOptions.style.display = 'none';
+                currentSubmission.type = 'video';
+                recordedChunks = [];
+                
+                const mimeType = getSupportedMimeType();
+                const maxDuration = 5000; 
+                const intervalTime = 50; 
+                let elapsedTime = 0;
+                
+                // UI changes for recording
+                progressBarContainer.style.display = 'block';
+                progressBar.style.width = '0%';
+                videoBtn.textContent = '🔴 RECORDING...';
+                videoBtn.disabled = true;
+                statusMessage.textContent = 'Recording started...';
+                statusMessage.className = 'alert-status alert-danger'; // Use Red while recording
+
+                try {
+                    const recorderOptions = mimeType ? { mimeType: mimeType } : {};
+                    mediaRecorder = new MediaRecorder(cameraStream, recorderOptions);
+                    
+                    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                    
+                    // Interval to update the progress bar visual
+                    videoInterval = setInterval(() => {
+                        elapsedTime += intervalTime;
+                        const percentage = (elapsedTime / maxDuration) * 100;
+                        progressBar.style.width = `${Math.min(100, percentage)}%`;
+                    }, intervalTime);
+                    
+                    mediaRecorder.onstop = () => {
+                        clearInterval(videoInterval); 
+                        
+                        // UI cleanup after stop
+                        videoBtn.textContent = 'Video (5s)'; 
+                        videoBtn.disabled = false;
+                        progressBarContainer.style.display = 'none'; 
+
+                        const finalMimeType = mediaRecorder.mimeType || 'video/mp4'; 
+                        const blob = new Blob(recordedChunks, { type: finalMimeType });
+                        currentSubmission.dataURL = URL.createObjectURL(blob);
+
+                        cameraPreview.style.display = 'none';
+                        stopCamera(); 
+
+                        // Create video element for playback preview
+                        const previewVideo = document.createElement('video');
+                        previewVideo.src = currentSubmission.dataURL;
+                        previewVideo.controls = true;
+                        previewVideo.autoplay = true; // Auto-play the captured video
+                        previewVideo.loop = true;
+                        previewVideo.className = 'playback'; // Uses custom CSS for styling
+
+                        const oldPreview = captureSection.querySelector('.playback');
+                        if (oldPreview) oldPreview.remove();
+                        captureSection.insertBefore(previewVideo, progressBarContainer); // Insert before progress bar container
+                        
+                        actionButtons.style.display = 'flex';
+                        statusMessage.textContent = 'Video recorded. Submit or Retake.';
+                        statusMessage.className = 'alert-status alert-info';
+                    };
+
+                    mediaRecorder.start();
+                    
+                    // Automatically stop after 5 seconds
+                    setTimeout(() => {
+                        if (mediaRecorder.state !== 'inactive') {
+                            mediaRecorder.stop();
+                        }
+                    }, maxDuration); 
+                } catch (err) {
+                    clearInterval(videoInterval);
+                    videoBtn.textContent = 'Video (5s)';
+                    videoBtn.disabled = false;
+                    progressBarContainer.style.display = 'none';
+                    statusMessage.innerHTML = `<span class="text-red-700">Recording failed: ${err.name}</span>`;
+                }
+            });
+
+            // ===== Retake Logic =====
+            retakeBtn.addEventListener('click', () => {
+                // Clear state and restart camera
+                currentSubmission = {};
+                if (videoInterval) clearInterval(videoInterval);
+                videoBtn.textContent = 'Video (5s)'; 
+                videoBtn.disabled = false;
+                progressBarContainer.style.display = 'none';
+
+                initCamera(); 
+            });
+
+
+            // =========================================================
+            // ===== Submit Logic (The Final Upload) =====
+            // =========================================================
+            submitBtn.addEventListener('click', async () => {
+                if (submitBtn.disabled) return; 
+                
+                stopCamera(); 
+                
+                const dataURL = currentSubmission.dataURL;
+                const type = currentSubmission.type; 
+
+                if (!dataURL) { 
+                    statusMessage.textContent = "Error: No media captured to submit.";
+                    statusMessage.className = 'alert-status alert-warning bg-yellow-100 text-yellow-800';
+                    return;
+                }
+
+                // UI setup for submission
+                submitBtn.disabled = true;
+                retakeBtn.disabled = true;
+                submitBtn.textContent = 'UPLOADING...';
+                statusMessage.innerHTML = `Uploading ${type}... <div class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status"></div>`;
+                statusMessage.className = 'alert-status alert-primary';
+
+                try {
+                    // 1. Convert the captured image/video DataURL into a file Blob
+                    const blob = await fetch(dataURL).then(res => res.blob()); 
+
+                    // 2. Upload the Blob directly to Cloudinary's API
+                    const finalUrl = await uploadToCloudinary(blob, type);
+
+                    // --- SUCCESS ---
+                    statusMessage.innerHTML = `✅ <span class="text-green-700">Submission Successful! </span>URL: <a href="${finalUrl}" target="_blank" class="text-blue-700 underline">${finalUrl.substring(0, 30)}...</a>`;
+                    statusMessage.className = 'alert-status alert-success';
+                    
+                    // After success, disable submit, but keep retake available for a new photo
+                    submitBtn.textContent = 'UPLOAD COMPLETE';
+                    submitBtn.disabled = true;
+                    retakeBtn.disabled = false;
+                    
+                } catch (error) {
+                    // --- FAILURE ---
+                    console.error("Error during submission:", error);
+                    statusMessage.innerHTML = `🔴 <span class="text-red-700">Submission failed: ${error.message}.</span>`;
+                    statusMessage.className = 'alert-status alert-danger';
+                    
+                    // Restore buttons after failure
+                    submitBtn.textContent = 'FAILED - Retry?';
+                    submitBtn.disabled = false;
+                    retakeBtn.disabled = false;
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>
